@@ -1,0 +1,6 @@
+[requires]
+cpp-httplib/0.10.3
+jsoncpp/1.9.5
+
+[generators]
+premake

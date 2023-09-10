@@ -1,0 +1,32 @@
+{
+ "graph_lock": {
+  "nodes": {
+   "0": {
+    "options": "cpp-httplib:with_brotli=False\ncpp-httplib:with_openssl=False\ncpp-httplib:with_zlib=False\njsoncpp:shared=False",
+    "requires": [
+     "1",
+     "2"
+    ],
+    "path": "conanfile.txt",
+    "context": "host"
+   },
+   "1": {
+    "ref": "cpp-httplib/0.10.3",
+    "options": "with_brotli=False\nwith_openssl=False\nwith_zlib=False",
+    "package_id": "5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9",
+    "prev": "0",
+    "context": "host"
+   },
+   "2": {
+    "ref": "jsoncpp/1.9.5",
+    "options": "shared=False",
+    "package_id": "2e8009f4998c3521e80ce5e585765e95fb01946f",
+    "prev": "0",
+    "context": "host"
+   }
+  },
+  "revisions_enabled": false
+ },
+ "version": "0.4",
+ "profile_host": "[settings]\narch=x86_64\narch_build=x86_64\nbuild_type=Debug\ncompiler=gcc\ncompiler.libcxx=libstdc++11\ncompiler.version=6.3\nos=Windows\nos_build=Windows\n[options]\n[build_requires]\n[env]\n"
+}
