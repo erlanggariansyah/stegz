@@ -4,7 +4,7 @@ workspace "StegZ"
     conan_basic_setup()
 
     project "stegZ"
-        kind "WebApp"
+        kind "ConsoleApp"
         language "C++"
         targetdir "bin/%{cfg.buildcfg}"
 		objdir "bin/%{cfg.buildcfg}/obj/"

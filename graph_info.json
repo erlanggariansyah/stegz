@@ -1,25 +1,29 @@
 {
  "options": [
   [
-   "cpp-httplib:with_brotli",
+   "with_curl",
    "False"
   ],
   [
-   "cpp-httplib:with_openssl",
+   "with_dyncol",
+   "True"
+  ],
+  [
+   "with_external_zlib",
    "False"
   ],
   [
-   "cpp-httplib:with_zlib",
+   "with_mysqlcompat",
    "False"
   ],
   [
-   "jsoncpp:shared",
-   "False"
+   "with_ssl",
+   "True"
   ]
  ],
  "root": {
-  "name": null,
-  "version": null,
+  "name": "mariadb-connector-c",
+  "version": "3.1.3",
   "user": null,
   "channel": null
  }

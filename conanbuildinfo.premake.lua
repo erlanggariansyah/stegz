@@ -4,10 +4,10 @@ conan_arch = "x86_64"
 
 conan_includedirs = {"C:/Users/Lenovo/.conan/data/cpp-httplib/0.10.3/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9/include",
 "C:/Users/Lenovo/.conan/data/cpp-httplib/0.10.3/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9/include/httplib",
-"C:/Users/Lenovo/.conan/data/jsoncpp/1.9.5/_/_/package/2e8009f4998c3521e80ce5e585765e95fb01946f/include"}
-conan_libdirs = {"C:/Users/Lenovo/.conan/data/jsoncpp/1.9.5/_/_/package/2e8009f4998c3521e80ce5e585765e95fb01946f/lib"}
+"C:/Users/Lenovo/.conan/data/nlohmann_json/3.11.2/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9/include"}
+conan_libdirs = {}
 conan_bindirs = {}
-conan_libs = {"jsoncpp"}
+conan_libs = {}
 conan_system_libs = {"crypt32", "cryptui", "ws2_32"}
 conan_defines = {}
 conan_cxxflags = {}
@@ -30,18 +30,18 @@ conan_exelinkflags_cpp_httplib = {}
 conan_frameworks_cpp_httplib = {}
 conan_rootpath_cpp_httplib = "C:/Users/Lenovo/.conan/data/cpp-httplib/0.10.3/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9"
 
-conan_includedirs_jsoncpp = {"C:/Users/Lenovo/.conan/data/jsoncpp/1.9.5/_/_/package/2e8009f4998c3521e80ce5e585765e95fb01946f/include"}
-conan_libdirs_jsoncpp = {"C:/Users/Lenovo/.conan/data/jsoncpp/1.9.5/_/_/package/2e8009f4998c3521e80ce5e585765e95fb01946f/lib"}
-conan_bindirs_jsoncpp = {}
-conan_libs_jsoncpp = {"jsoncpp"}
-conan_system_libs_jsoncpp = {}
-conan_defines_jsoncpp = {}
-conan_cxxflags_jsoncpp = {}
-conan_cflags_jsoncpp = {}
-conan_sharedlinkflags_jsoncpp = {}
-conan_exelinkflags_jsoncpp = {}
-conan_frameworks_jsoncpp = {}
-conan_rootpath_jsoncpp = "C:/Users/Lenovo/.conan/data/jsoncpp/1.9.5/_/_/package/2e8009f4998c3521e80ce5e585765e95fb01946f"
+conan_includedirs_nlohmann_json = {"C:/Users/Lenovo/.conan/data/nlohmann_json/3.11.2/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9/include"}
+conan_libdirs_nlohmann_json = {}
+conan_bindirs_nlohmann_json = {}
+conan_libs_nlohmann_json = {}
+conan_system_libs_nlohmann_json = {}
+conan_defines_nlohmann_json = {}
+conan_cxxflags_nlohmann_json = {}
+conan_cflags_nlohmann_json = {}
+conan_sharedlinkflags_nlohmann_json = {}
+conan_exelinkflags_nlohmann_json = {}
+conan_frameworks_nlohmann_json = {}
+conan_rootpath_nlohmann_json = "C:/Users/Lenovo/.conan/data/nlohmann_json/3.11.2/_/_/package/5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9"
 
 function conan_basic_setup()
     configurations{conan_build_type}
