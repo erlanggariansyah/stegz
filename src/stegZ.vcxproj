@@ -38,7 +38,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>STATIC_CONCPP;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Program Files\MySQL\mysql-connector-c++\include\jdbc;C:\Users\Lenovo\.conan\data\cpp-httplib\0.10.3\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include;C:\Users\Lenovo\.conan\data\cpp-httplib\0.10.3\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include\httplib;C:\Users\Lenovo\.conan\data\nlohmann_json\3.11.2\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\Project\ibmcapstone-docsign\be\src;C:\Program Files\MySQL\mysql-connector-c++\include\jdbc;C:\Users\Lenovo\.conan\data\cpp-httplib\0.10.3\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include;C:\Users\Lenovo\.conan\data\cpp-httplib\0.10.3\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include\httplib;C:\Users\Lenovo\.conan\data\nlohmann_json\3.11.2\_\_\package\5ab84d6acfe1f23c4fae0ab88f26e3a396351ac9\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
@@ -48,11 +48,15 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>mysqlcppconn-static.lib;crypt32.lib;cryptui.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Program Files\MySQL\mysql-connector-c++\lib64\vs14;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\Project\ibmcapstone-docsign\be\src;C:\Program Files\MySQL\mysql-connector-c++\lib64\vs14;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="sha256.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="sha256.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
