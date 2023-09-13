@@ -6,6 +6,7 @@
 #include <cppconn/exception.h>
 #include <cppconn/prepared_statement.h>
 #include <sha256.h>;
+#include <base64.h>
 
 using NJson = nlohmann::json;
 
@@ -21,7 +22,10 @@ void migrate_db() {
         prep_stmt->execute();
 
         con->setSchema("stegz");
-        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS users(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, username VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, first_name VARCHAR(255) NOT NULL, last_name VARCHAR(255), password TEXT, role VARCHAR(20) NOT NULL, created_at TIMESTAMP)");
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS users(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, username VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, first_name VARCHAR(255) NOT NULL, last_name VARCHAR(255), password TEXT, is_verified BOOLEAN DEFAULT FALSE, role VARCHAR(20) NOT NULL, created_at TIMESTAMP)");
+        prep_stmt->execute();
+
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, revoked_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT NOW())");
         prep_stmt->execute();
     }
     catch (sql::SQLException sql_e) {
@@ -39,6 +43,7 @@ void migrate_db() {
 }
 
 int main() {
+    migrate_db();
     httplib::Server srv;
 
     srv.Get("/", [](const httplib::Request& req, httplib::Response& res) {
@@ -61,7 +66,8 @@ int main() {
         res.set_content(project_information.dump(), "application/json");
     });
 
-    srv.Post("/login", [](const httplib::Request& req, httplib::Response& res) {
+
+    srv.Post("/api/v1/login", [](const httplib::Request& req, httplib::Response& res) {
         NJson request_body = NJson::parse(req.body);
         NJson response;
         
@@ -80,47 +86,83 @@ int main() {
             error_fields.push_back("password");
         }
 
-        try {
-            SHA256 sha256;
+        if (error_fields.size() > 0) {
+            response["code"] = 400;
+            response["message"] = "Bad Request";
+            response["data"] = error_fields;
 
-            sql::Driver* driver{ get_driver_instance() };
-            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
-            sql::PreparedStatement* prep_stmt;
-            sql::ResultSet* result_query;
+            res.status = 400;
+            res.set_content(response.dump(), "application/json");
+        }
+        else {
+            try {
+                SHA256 sha256;
 
-            con->setSchema("stegz");
+                sql::Driver* driver{ get_driver_instance() };
+                sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+                sql::PreparedStatement* prep_stmt;
+                sql::ResultSet* result_query;
 
-            std::string email(request_body.at("email"));
-            std::string password(request_body.at("password"));
+                con->setSchema("stegz");
 
-            prep_stmt = con->prepareStatement("SELECT * FROM users WHERE email = ? LIMIT 1");
-            prep_stmt->setString(1, email);
+                std::string email(request_body.at("email"));
+                std::string password(request_body.at("password"));
 
-            result_query = prep_stmt->executeQuery();
-            if (result_query->next()) {
-                std::string user_password = result_query->getString("password");
+                prep_stmt = con->prepareStatement("SELECT * FROM users WHERE email = ? LIMIT 1");
+                prep_stmt->setString(1, email);
 
-                if (user_password == sha256(password)) {
-                    con->close();
+                result_query = prep_stmt->executeQuery();
+                if (result_query->next()) {
+                    std::string user_password = result_query->getString("password");
 
-                    delete prep_stmt;
-                    delete con;
+                    if (user_password == sha256(password)) {
+                        NJson user_information;
+                        user_information["uuid"] = result_query->getString("uuid");
+                        user_information["email"] = result_query->getString("email");
+                        user_information["username"] = result_query->getString("username");
+                        user_information["first_name"] = result_query->getString("first_name");
+                        user_information["last_name"] = result_query->getString("last_name");
+                        user_information["role"] = result_query->getString("role");
+                        user_information["created_at"] = result_query->getString("created_at");
 
-                    NJson user_information;
-                    user_information["uuid"] = result_query->getString("uuid");
-                    user_information["email"] = result_query->getString("email");
-                    user_information["username"] = result_query->getString("username");
-                    user_information["first_name"] = result_query->getString("first_name");
-                    user_information["last_name"] = result_query->getString("last_name");
-                    user_information["role"] = result_query->getString("role");
-                    user_information["created_at"] = result_query->getString("created_at");
-                    
-                    response["code"] = 200;
-                    response["message"] = "OK";
-                    response["data"] = user_information;
+                        std::string token{ base64_encode(reinterpret_cast<const unsigned char*>(user_information.dump().c_str()), user_information.dump().length()) };
 
-                    res.status = 200;
-                    res.set_content(response.dump(), "application/json");
+                        prep_stmt = con->prepareStatement("INSERT INTO access_tokens(user_uuid, token) VALUES(?, ?)");
+                        prep_stmt->setString(1, user_information["uuid"].get<std::string>());
+                        prep_stmt->setString(2, token);
+                        prep_stmt->execute();
+
+                        con->close();
+
+                        delete prep_stmt;
+                        delete con;
+                        delete result_query;
+
+                        response["code"] = 200;
+                        response["message"] = "OK";
+                        response["data"]["user"] = user_information;
+                        response["data"]["token"] = token;
+
+                        res.status = 200;
+                        res.set_content(response.dump(), "application/json");
+                    }
+                    else {
+                        error_fields.push_back("email");
+                        error_fields.push_back("password");
+
+                        con->close();
+
+                        delete prep_stmt;
+                        delete con;
+                        delete result_query;
+
+                        response["code"] = 401;
+                        response["message"] = "Unauthorized";
+                        response["data"] = error_fields;
+
+                        res.status = 401;
+                        res.set_content(response.dump(), "application/json");
+                    }
                 }
                 else {
                     error_fields.push_back("email");
@@ -130,6 +172,7 @@ int main() {
 
                     delete prep_stmt;
                     delete con;
+                    delete result_query;
 
                     response["code"] = 401;
                     response["message"] = "Unauthorized";
@@ -139,34 +182,18 @@ int main() {
                     res.set_content(response.dump(), "application/json");
                 }
             }
-            else {
-                error_fields.push_back("email");
-                error_fields.push_back("password");
+            catch (sql::SQLException sql_e) {
+                response["code"] = 500;
+                response["message"] = "Internal Server Error";
+                response["data"] = "Error connection to database.";
 
-                con->close();
-
-                delete prep_stmt;
-                delete con;
-
-                response["code"] = 401;
-                response["message"] = "Unauthorized";
-                response["data"] = error_fields;
-
-                res.status = 401;
+                res.status = 500;
                 res.set_content(response.dump(), "application/json");
             }
         }
-        catch (sql::SQLException sql_e) {
-            response["code"] = 500;
-            response["message"] = "Internal Server Error";
-            response["data"] = "Error connection to database.";
-
-            res.status = 500;
-            res.set_content(response.dump(), "application/json");
-        }
     });
 
-    srv.Post("/register", [](const httplib::Request& req, httplib::Response& res) {
+    srv.Post("/api/v1/register", [](const httplib::Request& req, httplib::Response& res) {
         NJson request_body = NJson::parse(req.body);
         NJson response;
 
@@ -246,6 +273,7 @@ int main() {
 
                     delete prep_stmt;
                     delete con;
+                    delete result_query;
 
                     response["code"] = 200;
                     response["message"] = "OK";
