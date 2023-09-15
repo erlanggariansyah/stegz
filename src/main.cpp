@@ -1,11 +1,12 @@
 #include <iostream>
+#include <algorithm>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 #include <mysql_connection.h>
 #include <mysql_driver.h>
 #include <cppconn/exception.h>
 #include <cppconn/prepared_statement.h>
-#include <sha256.h>;
+#include <sha256.h>
 #include <base64.h>
 
 using NJson = nlohmann::json;
@@ -25,12 +26,10 @@ void migrate_db() {
         prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS users(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, username VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, first_name VARCHAR(255) NOT NULL, last_name VARCHAR(255), password TEXT, is_verified BOOLEAN DEFAULT FALSE, role VARCHAR(20) NOT NULL, created_at TIMESTAMP)");
         prep_stmt->execute();
 
-        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, revoked_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT NOW())");
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, source VARCHAR(10) NOT NULL, revoked_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT NOW())");
         prep_stmt->execute();
     }
     catch (sql::SQLException sql_e) {
-        con->close();
-
         std::cout << "Gagal migrasi database: " << sql_e.what() << std::endl;
         system("pause");
         exit(1);
@@ -40,6 +39,23 @@ void migrate_db() {
 
     delete prep_stmt;
     delete con;
+}
+
+std::string generate_random_string(size_t length) {
+    auto randchar = []() -> char
+        {
+            const char charset[] =
+                "0123456789"
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                "abcdefghijklmnopqrstuvwxyz";
+            const size_t max_index = (sizeof(charset) - 1);
+            return charset[rand() % max_index];
+        };
+
+    std::string str(length, 0);
+    std::generate_n(str.begin(), length, randchar);
+
+    return str;
 }
 
 int main() {
@@ -57,19 +73,37 @@ int main() {
         project_stacks[4] = "JavaScript";
 
         project_information["name"] = "stegZ";
-        project_information["description"] = "stegZ Project is a simple-minimalistic steganography tool for IBM Hybrid Cloud & AI Project Capstone";
+        project_information["description"] = "stegZ Project is a simple-minimalistic web-application steganography tool for IBM Hybrid Cloud & AI Project Capstone";
         project_information["creator"] = "Erlangga Riansyah";
         project_information["stacks"] = project_stacks;
         project_information["repository"] = "https://github.com/erlanggariansyah/stegz";
         project_information["created_at"] = "12/09/2023";
 
+        res.status = 200;
         res.set_content(project_information.dump(), "application/json");
     });
 
+    srv.Post("/api/v1/logout", [](const httplib::Request& req, httplib::Response& res) {
+        // TODO: API Logout
+    });
+
+    srv.Post("/api/v1/login/ibm", [](const httplib::Request& req, httplib::Response& res) {
+        // TODO: API Login IBM SSO
+    });
+
+    srv.Options("/api/v1/login", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");        
+    });
 
     srv.Post("/api/v1/login", [](const httplib::Request& req, httplib::Response& res) {
         NJson request_body = NJson::parse(req.body);
         NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
         
         std::vector<std::string> error_fields;
 
@@ -124,12 +158,18 @@ int main() {
                         user_information["last_name"] = result_query->getString("last_name");
                         user_information["role"] = result_query->getString("role");
                         user_information["created_at"] = result_query->getString("created_at");
+                        user_information["session_id"] = generate_random_string(28);
 
                         std::string token{ base64_encode(reinterpret_cast<const unsigned char*>(user_information.dump().c_str()), user_information.dump().length()) };
 
-                        prep_stmt = con->prepareStatement("INSERT INTO access_tokens(user_uuid, token) VALUES(?, ?)");
+                        prep_stmt = con->prepareStatement("UPDATE access_tokens SET revoked_at = NOW() WHERE user_uuid = ? AND revoked_at IS NULL");
+                        prep_stmt->setString(1, result_query->getString("uuid"));
+                        prep_stmt->execute();
+                        
+                        prep_stmt = con->prepareStatement("INSERT INTO access_tokens(user_uuid, token, source) VALUES(?, ?, ?)");
                         prep_stmt->setString(1, user_information["uuid"].get<std::string>());
                         prep_stmt->setString(2, token);
+                        prep_stmt->setString(3, "STEGZ");
                         prep_stmt->execute();
 
                         con->close();
@@ -193,9 +233,19 @@ int main() {
         }
     });
 
+    srv.Options("/api/v1/register", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    });
+
     srv.Post("/api/v1/register", [](const httplib::Request& req, httplib::Response& res) {
         NJson request_body = NJson::parse(req.body);
         NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
 
         std::vector<std::string> error_fields;
 
@@ -279,6 +329,7 @@ int main() {
                     response["message"] = "OK";
                     response["data"] = NULL;
 
+                    res.status = 200;
                     res.set_content(response.dump(), "application/json");
                 }
             }
