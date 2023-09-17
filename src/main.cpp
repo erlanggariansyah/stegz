@@ -62,7 +62,15 @@ int main() {
     migrate_db();
     httplib::Server srv;
 
+    srv.Options("/", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    });
+
     srv.Get("/", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+
         NJson project_information;
         std::string project_stacks[5];
 
@@ -83,12 +91,237 @@ int main() {
         res.set_content(project_information.dump(), "application/json");
     });
 
+    srv.Options("/api/v1/logout", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    });
+
     srv.Post("/api/v1/logout", [](const httplib::Request& req, httplib::Response& res) {
-        // TODO: API Logout
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+
+        if (req.has_header("Authorization")) {
+            std::string bearer_token(req.get_header_value("Authorization").substr(7));
+
+            sql::Driver* driver{ get_driver_instance() };
+            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+            sql::PreparedStatement* prep_stmt;
+            sql::ResultSet* result_query;
+
+            con->setSchema("stegz");
+
+            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? LIMIT 1");
+            prep_stmt->setString(1, bearer_token);
+
+            result_query = prep_stmt->executeQuery();
+            if (result_query->next()) {
+                prep_stmt = con->prepareStatement("UPDATE access_tokens SET revoked_at = NOW() WHERE user_uuid = ? AND revoked_at IS NULL");
+                prep_stmt->setString(1, result_query->getString("user_uuid"));
+                prep_stmt->execute();
+
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"] = "Success logout.";
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+            else {
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"] = "Success logout.";
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+        }
+        else {
+            response["code"] = 401;
+            response["message"] = "Unauthorized";
+            response["data"] = "You don't have access to perform this action.";
+
+            res.status = 401;
+            res.set_content(response.dump(), "application/json");
+        }
+    });
+
+    srv.Options("/api/v1/login/ibm", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
     });
 
     srv.Post("/api/v1/login/ibm", [](const httplib::Request& req, httplib::Response& res) {
-        // TODO: API Login IBM SSO
+        NJson request_body = NJson::parse(req.body);
+        NJson response;
+        
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+
+        std::vector<std::string> error_fields;
+        if (!request_body.contains("token")) {
+            error_fields.push_back("token");
+        }
+
+        if (!request_body.contains("email") || !request_body["email"].is_string() || request_body["email"].get<std::string>().find('@') == std::string::npos) {
+            error_fields.push_back("email");
+        }
+
+        if (!request_body.contains("first_name")) {
+            error_fields.push_back("first_name");
+        }
+
+        if (!request_body.contains("last_name")) {
+            error_fields.push_back("last_name");
+        }
+
+        if (error_fields.size() > 0) {
+            response["code"] = 400;
+            response["message"] = "Bad Request";
+            response["data"] = error_fields;
+
+            res.status = 400;
+            res.set_content(response.dump(), "application/json");
+        }
+        else {
+            SHA256 sha256;
+
+            sql::Driver* driver{ get_driver_instance() };
+            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+            sql::PreparedStatement* prep_stmt;
+            sql::ResultSet* result_query;
+
+            con->setSchema("stegz");
+
+            std::string email(request_body.at("email"));
+            std::string token(request_body.at("token"));
+
+            prep_stmt = con->prepareStatement("SELECT * FROM users WHERE email = ? LIMIT 1");
+            prep_stmt->setString(1, email);
+
+            result_query = prep_stmt->executeQuery();
+            if (result_query->next()) {
+                NJson user_information;
+                user_information["uuid"] = result_query->getString("uuid");
+                user_information["email"] = result_query->getString("email");
+                user_information["username"] = result_query->getString("username");
+                user_information["first_name"] = result_query->getString("first_name");
+                user_information["last_name"] = result_query->getString("last_name");
+                user_information["role"] = result_query->getString("role");
+                user_information["created_at"] = result_query->getString("created_at");
+                user_information["session_id"] = generate_random_string(28);
+
+                prep_stmt = con->prepareStatement("UPDATE access_tokens SET revoked_at = NOW() WHERE user_uuid = ? AND revoked_at IS NULL");
+                prep_stmt->setString(1, result_query->getString("uuid"));
+                prep_stmt->execute();
+
+                prep_stmt = con->prepareStatement("INSERT INTO access_tokens(user_uuid, token, source) VALUES(?, ?, ?)");
+                prep_stmt->setString(1, user_information["uuid"].get<std::string>());
+                prep_stmt->setString(2, token);
+                prep_stmt->setString(3, "IBM");
+                prep_stmt->execute();
+
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+                
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"]["user"] = user_information;
+                response["data"]["token"] = token;
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+            else {
+                std::string first_name(request_body.at("first_name"));
+                std::string last_name(request_body.at("last_name"));
+                std::string password(sha256(email));
+                std::string username("stegz_" + email.substr(0, email.find("@")));
+
+                prep_stmt = con->prepareStatement("INSERT INTO users(username, email, first_name, last_name, password, role) VALUES(?, ?, ?, ?, ?, 'USER')");
+
+                prep_stmt->setString(1, username);
+                prep_stmt->setString(2, email);
+                prep_stmt->setString(3, first_name);
+                prep_stmt->setString(4, last_name);
+                prep_stmt->setString(5, password);
+                prep_stmt->execute();
+
+                prep_stmt = con->prepareStatement("SELECT * FROM users WHERE email = ? LIMIT 1");
+                prep_stmt->setString(1, email);
+
+                result_query = prep_stmt->executeQuery();
+                if (result_query->next()) {
+                    NJson user_information;
+                    user_information["uuid"] = result_query->getString("uuid");
+                    user_information["email"] = result_query->getString("email");
+                    user_information["username"] = result_query->getString("username");
+                    user_information["first_name"] = result_query->getString("first_name");
+                    user_information["last_name"] = result_query->getString("last_name");
+                    user_information["role"] = result_query->getString("role");
+                    user_information["created_at"] = result_query->getString("created_at");
+                    user_information["session_id"] = generate_random_string(28);
+
+                    prep_stmt = con->prepareStatement("UPDATE access_tokens SET revoked_at = NOW() WHERE user_uuid = ? AND revoked_at IS NULL");
+                    prep_stmt->setString(1, result_query->getString("uuid"));
+                    prep_stmt->execute();
+
+                    prep_stmt = con->prepareStatement("INSERT INTO access_tokens(user_uuid, token, source) VALUES(?, ?, ?)");
+                    prep_stmt->setString(1, user_information["uuid"].get<std::string>());
+                    prep_stmt->setString(2, token);
+                    prep_stmt->setString(3, "IBM");
+                    prep_stmt->execute();
+
+                    con->close();
+
+                    delete prep_stmt;
+                    delete con;
+                    delete result_query;
+
+                    response["code"] = 200;
+                    response["message"] = "OK";
+                    response["data"]["user"] = user_information;
+                    response["data"]["token"] = token;
+
+                    res.status = 200;
+                    res.set_content(response.dump(), "application/json");
+                }
+                else {
+                    con->close();
+
+                    delete prep_stmt;
+                    delete con;
+                    delete result_query;
+
+                    response["code"] = 500;
+                    response["message"] = "Internal Server Error";
+                    response["data"] = "Error inserting user into DB.";
+
+                    res.status = 500;
+                    res.set_content(response.dump(), "application/json");
+                }
+            }
+        }
     });
 
     srv.Options("/api/v1/login", [](const httplib::Request& req, httplib::Response& res) {
