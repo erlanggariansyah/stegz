@@ -26,7 +26,7 @@ void migrate_db() {
         prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS users(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, username VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL, first_name VARCHAR(255) NOT NULL, last_name VARCHAR(255), password TEXT, is_verified BOOLEAN DEFAULT FALSE, role VARCHAR(20) NOT NULL, created_at TIMESTAMP)");
         prep_stmt->execute();
 
-        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, source VARCHAR(10) NOT NULL, revoked_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT NOW())");
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, source VARCHAR(10) NOT NULL, revoked_at TIMESTAMP NULL, comment TEXT, created_at TIMESTAMP DEFAULT NOW())");
         prep_stmt->execute();
     }
     catch (sql::SQLException sql_e) {
@@ -72,13 +72,15 @@ int main() {
         res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
 
         NJson project_information;
-        std::string project_stacks[5];
+        std::string project_stacks[7];
 
         project_stacks[0] = "C++";
         project_stacks[1] = "cpp-httplib";
         project_stacks[2] = "MySQL";
         project_stacks[3] = "React";
         project_stacks[4] = "JavaScript";
+        project_stacks[5] = "IBM Security Verify";
+        project_stacks[6] = "OpenCV";
 
         project_information["name"] = "stegZ";
         project_information["description"] = "stegZ Project is a simple-minimalistic web-application steganography tool for IBM Hybrid Cloud & AI Project Capstone";
@@ -89,6 +91,88 @@ int main() {
 
         res.status = 200;
         res.set_content(project_information.dump(), "application/json");
+    });
+
+    srv.Options("/api/v1/sessions", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    });
+
+    srv.Get("/api/v1/sessions", [](const httplib::Request& req, httplib::Response& res) {
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+        if (req.has_header("Authorization")) {
+            std::string bearer_token(req.get_header_value("Authorization").substr(7));
+
+            sql::Driver* driver{ get_driver_instance() };
+            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+            sql::PreparedStatement* prep_stmt;
+            sql::ResultSet* result_query;
+
+            con->setSchema("stegz");
+
+            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? AND revoked_at IS NULL LIMIT 1");
+            prep_stmt->setString(1, bearer_token);
+
+            result_query = prep_stmt->executeQuery();
+            if (result_query->next()) {
+                prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE user_uuid = ? ORDER BY created_at DESC");
+                prep_stmt->setString(1, result_query->getString("user_uuid"));
+                result_query = prep_stmt->executeQuery();
+
+                std::vector<NJson> access_tokens;
+                while (result_query->next()) {
+                    NJson access_token;
+                    access_token["uuid"] = result_query->getString("uuid");
+                    access_token["source"] = result_query->getString("source");
+                    access_token["revoked_at"] = result_query->getString("revoked_at");
+                    access_token["created_at"] = result_query->getString("created_at");
+                    access_token["comment"] = result_query->getString("comment");
+
+                    access_tokens.push_back(access_token);
+                }
+
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"] = access_tokens;
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+            else {
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 400;
+                response["message"] = "Bad Request";
+                response["data"] = "The token has been revoked.";
+
+                res.status = 400;
+                res.set_content(response.dump(), "application/json");
+            }
+        }
+        else {
+            response["code"] = 401;
+            response["message"] = "Unauthorized";
+            response["data"] = "You don't have access to perform this action.";
+
+            res.status = 401;
+            res.set_content(response.dump(), "application/json");
+        }
     });
 
     srv.Options("/api/v1/logout", [](const httplib::Request& req, httplib::Response& res) {
@@ -114,7 +198,7 @@ int main() {
 
             con->setSchema("stegz");
 
-            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? LIMIT 1");
+            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? AND revoked_at IS NULL LIMIT 1");
             prep_stmt->setString(1, bearer_token);
 
             result_query = prep_stmt->executeQuery();
@@ -143,11 +227,11 @@ int main() {
                 delete con;
                 delete result_query;
 
-                response["code"] = 200;
-                response["message"] = "OK";
-                response["data"] = "Success logout.";
+                response["code"] = 400;
+                response["message"] = "Bad Request";
+                response["data"] = "The token has been revoked.";
 
-                res.status = 200;
+                res.status = 400;
                 res.set_content(response.dump(), "application/json");
             }
         }
