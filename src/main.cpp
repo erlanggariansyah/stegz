@@ -93,6 +93,139 @@ int main() {
         res.set_content(project_information.dump(), "application/json");
     });
 
+    srv.Options("/api/v1/sessions/comment", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    });
+
+    srv.Post("/api/v1/sessions/comment", [](const httplib::Request& req, httplib::Response& res) {
+        NJson request_body = NJson::parse(req.body);
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+
+        std::vector<std::string> error_fields;
+
+        if (!request_body.contains("access_token_id")) {
+            error_fields.push_back("access_token_id");
+        }
+
+        if (!request_body.contains("comment")) {
+            error_fields.push_back("comment");
+        }
+
+        if (error_fields.size() > 0) {
+            response["code"] = 400;
+            response["message"] = "Bad Request";
+            response["data"] = error_fields;
+
+            res.status = 400;
+            res.set_content(response.dump(), "application/json");
+        }
+        else {
+            if (req.has_header("Authorization")) {
+                std::string bearer_token(req.get_header_value("Authorization").substr(7));
+
+                sql::Driver* driver{ get_driver_instance() };
+                sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+                sql::PreparedStatement* prep_stmt;
+                sql::ResultSet* result_query;
+
+                con->setSchema("stegz");
+
+                prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? AND revoked_at IS NULL LIMIT 1");
+                prep_stmt->setString(1, bearer_token);
+
+                result_query = prep_stmt->executeQuery();
+                if (result_query->next()) {
+                    std::string user_uuid(result_query->getString("user_uuid"));
+                    std::string access_token_id(request_body.at("access_token_id"));
+
+                    prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE uuid = ? LIMIT 1");
+                    prep_stmt->setString(1, access_token_id);
+                    result_query = prep_stmt->executeQuery();
+
+                    if (result_query->next()) {
+                        if (result_query->getString("user_uuid") != user_uuid) {
+                            con->close();
+
+                            delete prep_stmt;
+                            delete con;
+                            delete result_query;
+
+                            response["code"] = 401;
+                            response["message"] = "Unauthorized";
+                            response["data"] = "You don't have access to perform this action.";
+
+                            res.status = 401;
+                            res.set_content(response.dump(), "application/json");
+                        }
+                        else {
+                            std::string comment(request_body.at("comment"));
+
+                            prep_stmt = con->prepareStatement("UPDATE access_tokens SET comment = ? WHERE uuid = ?");
+                            prep_stmt->setString(1, comment);
+                            prep_stmt->setString(2, access_token_id);
+                            prep_stmt->execute();
+
+                            con->close();
+
+                            delete prep_stmt;
+                            delete con;
+                            delete result_query;
+
+                            response["code"] = 200;
+                            response["message"] = "OK";
+                            response["data"] = "Success adding comment.";
+
+                            res.status = 200;
+                            res.set_content(response.dump(), "application/json");
+                        }
+                    }
+                    else {
+                        con->close();
+
+                        delete prep_stmt;
+                        delete con;
+                        delete result_query;
+
+                        response["code"] = 404;
+                        response["message"] = "Not Found";
+                        response["data"] = "The token with given id is not found.";
+
+                        res.status = 404;
+                        res.set_content(response.dump(), "application/json");
+                    }
+                }
+                else {
+                    con->close();
+
+                    delete prep_stmt;
+                    delete con;
+                    delete result_query;
+
+                    response["code"] = 400;
+                    response["message"] = "Bad Request";
+                    response["data"] = "The authorization token is not valid.";
+
+                    res.status = 400;
+                    res.set_content(response.dump(), "application/json");
+                }
+            }
+            else {
+                response["code"] = 401;
+                response["message"] = "Unauthorized";
+                response["data"] = "You don't have access to perform this action.";
+
+                res.status = 401;
+                res.set_content(response.dump(), "application/json");
+            }
+        }
+    });
+
     srv.Options("/api/v1/sessions", [](const httplib::Request& req, httplib::Response& res) {
         res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
         res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
