@@ -28,6 +28,18 @@ void migrate_db() {
 
         prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS access_tokens(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, token TEXT NOT NULL, source VARCHAR(10) NOT NULL, revoked_at TIMESTAMP NULL, comment TEXT, created_at TIMESTAMP DEFAULT NOW())");
         prep_stmt->execute();
+
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS plans(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, tier INT(2) NOT NULL, plan_name VARCHAR(36) NOT NULL, description TEXT, price VARCHAR(100) NOT NULL, availability VARCHAR(100) NOT NULL DEFAULT 'Not Available', created_at TIMESTAMP DEFAULT NOW())");
+        prep_stmt->execute();
+
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS plan_usages(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, tier INT(2) NOT NULL, plan_name VARCHAR(36) NOT NULL, price BIGINT NOT NULL, canceled_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT NOW())");
+        prep_stmt->execute();
+
+        prep_stmt = con->prepareStatement("CREATE TABLE IF NOT EXISTS billing_usages(uuid VARCHAR(16) DEFAULT (uuid()) NOT NULL PRIMARY KEY, user_uuid VARCHAR(16) NOT NULL, action VARCHAR(100) NOT NULL, price BIGINT NOT NULL, created_at TIMESTAMP DEFAULT NOW())");
+        prep_stmt->execute();
+
+        // prep_stmt = con->prepareStatement("INSERT INTO plans(tier, plan_name, description, price, availability) VALUES (1, 'Free', '10 maximum free encoding count, 10 maximum free decoding count, no-SSO', 0, 'Not Available'), (2, 'SeaLion', '100 maximum free encoding count, 100 maximum free decoding count, SSO', 300000, 'Not Available'), (3, 'Nordwind', '1000 maximum free encoding count, 1000 maximum free decoding count, SSO', 800000, 'Not Available'), (4, 'Uranus', '10000 maximum free encoding count, 10000 maximum free decoding count, SSO', 1800000, 'Not Available'), (5, 'Vistula-Oder', 'Unlimited encoding count, unlimited decoding count, SSO', 9200000, 'Available - Auto Apply')");
+        // prep_stmt->execute();
     }
     catch (sql::SQLException sql_e) {
         std::cout << "Gagal migrasi database: " << sql_e.what() << std::endl;
@@ -72,7 +84,7 @@ int main() {
         res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
 
         NJson project_information;
-        std::string project_stacks[7];
+        std::string project_stacks[6];
 
         project_stacks[0] = "C++";
         project_stacks[1] = "cpp-httplib";
@@ -80,7 +92,6 @@ int main() {
         project_stacks[3] = "React";
         project_stacks[4] = "JavaScript";
         project_stacks[5] = "IBM Security Verify";
-        project_stacks[6] = "OpenCV";
 
         project_information["name"] = "stegZ";
         project_information["description"] = "stegZ Project is a simple-minimalistic web-application steganography tool for IBM Hybrid Cloud & AI Project Capstone";
@@ -91,6 +102,55 @@ int main() {
 
         res.status = 200;
         res.set_content(project_information.dump(), "application/json");
+    });
+
+    srv.Options("/api/v1/plans", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    });
+
+    srv.Get("/api/v1/plans", [](const httplib::Request& req, httplib::Response& res) {
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+        sql::Driver* driver{ get_driver_instance() };
+        sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+        sql::PreparedStatement* prep_stmt;
+        sql::ResultSet* result_query;
+
+        con->setSchema("stegz");
+
+        prep_stmt = con->prepareStatement("SELECT * FROM plans ORDER BY created_at ASC");
+        result_query = prep_stmt->executeQuery();
+
+        std::vector<NJson> plans;
+        while (result_query->next()) {
+            NJson plan;
+            plan["uuid"] = result_query->getString("uuid");
+            plan["tier"] = result_query->getInt("tier");
+            plan["plan_name"] = result_query->getString("plan_name");
+            plan["description"] = result_query->getString("description");
+            plan["price"] = result_query->getInt("price");
+            plan["availability"] = result_query->getString("availability");
+            plan["created_at"] = result_query->getString("created_at");
+
+            plans.push_back(plan);
+        }
+
+        con->close();
+
+        delete prep_stmt;
+        delete con;
+        delete result_query;
+
+        response["code"] = 200;
+        response["message"] = "OK";
+        response["data"] = plans;
+
+        res.status = 200;
+        res.set_content(response.dump(), "application/json");
     });
 
     srv.Options("/api/v1/sessions/comment", [](const httplib::Request& req, httplib::Response& res) {
@@ -223,6 +283,163 @@ int main() {
                 res.status = 401;
                 res.set_content(response.dump(), "application/json");
             }
+        }
+    });
+
+    srv.Options("/api/v1/billings/usage", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    });
+
+    srv.Post("/api/v1/billings/usage", [](const httplib::Request& req, httplib::Response& res) {
+        NJson request_body = NJson::parse(req.body);
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "POST, OPTIONS");
+
+        if (req.has_header("Authorization")) {
+            std::string bearer_token(req.get_header_value("Authorization").substr(7));
+
+            sql::Driver* driver{ get_driver_instance() };
+            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+            sql::PreparedStatement* prep_stmt;
+            sql::ResultSet* result_query;
+
+            con->setSchema("stegz");
+
+            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? AND revoked_at IS NULL LIMIT 1");
+            prep_stmt->setString(1, bearer_token);
+
+            result_query = prep_stmt->executeQuery();
+            if (result_query->next()) {
+                std::string action(request_body.at("action"));
+                std::string price(request_body.at("price"));
+
+                prep_stmt = con->prepareStatement("INSERT INTO billing_usages(user_uuid, action, price) VALUES (?, ?, ?)");
+                prep_stmt->setString(1, result_query->getString("user_uuid"));
+                prep_stmt->setString(2, action);
+                prep_stmt->setString(3, price);
+                prep_stmt->execute();
+
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"] = "Success add billing usage.";
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+            else {
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 400;
+                response["message"] = "Bad Request";
+                response["data"] = "The token has been revoked.";
+
+                res.status = 400;
+                res.set_content(response.dump(), "application/json");
+            }
+        }
+        else {
+            response["code"] = 401;
+            response["message"] = "Unauthorized";
+            response["data"] = "You don't have access to perform this action.";
+
+            res.status = 401;
+            res.set_content(response.dump(), "application/json");
+        }
+    });
+
+    srv.Options("/api/v1/billings", [](const httplib::Request& req, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    });
+
+    srv.Get("/api/v1/billings", [](const httplib::Request& req, httplib::Response& res) {
+        NJson response;
+
+        res.set_header("Access-Control-Allow-Origin", "http://localhost:3000");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+        if (req.has_header("Authorization")) {
+            std::string bearer_token(req.get_header_value("Authorization").substr(7));
+
+            sql::Driver* driver{ get_driver_instance() };
+            sql::Connection* con{ driver->connect("tcp://127.0.0.1:3306", "root", "") };
+            sql::PreparedStatement* prep_stmt;
+            sql::ResultSet* result_query;
+
+            con->setSchema("stegz");
+
+            prep_stmt = con->prepareStatement("SELECT * FROM access_tokens WHERE token = ? AND revoked_at IS NULL LIMIT 1");
+            prep_stmt->setString(1, bearer_token);
+
+            result_query = prep_stmt->executeQuery();
+            if (result_query->next()) {
+                prep_stmt = con->prepareStatement("SELECT * FROM billing_usages WHERE user_uuid = ? ORDER BY created_at DESC");
+                prep_stmt->setString(1, result_query->getString("user_uuid"));
+                result_query = prep_stmt->executeQuery();
+
+                std::vector<NJson> billing_usages;
+                while (result_query->next()) {
+                    NJson billing_usage;
+                    billing_usage["uuid"] = result_query->getString("uuid");
+                    billing_usage["action"] = result_query->getString("action");
+                    billing_usage["price"] = result_query->getString("price");
+                    billing_usage["created_at"] = result_query->getString("created_at");
+
+                    billing_usages.push_back(billing_usage);
+                }
+
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 200;
+                response["message"] = "OK";
+                response["data"] = billing_usages;
+
+                res.status = 200;
+                res.set_content(response.dump(), "application/json");
+            }
+            else {
+                con->close();
+
+                delete prep_stmt;
+                delete con;
+                delete result_query;
+
+                response["code"] = 400;
+                response["message"] = "Bad Request";
+                response["data"] = "The token has been revoked.";
+
+                res.status = 400;
+                res.set_content(response.dump(), "application/json");
+            }
+        }
+        else {
+            response["code"] = 401;
+            response["message"] = "Unauthorized";
+            response["data"] = "You don't have access to perform this action.";
+
+            res.status = 401;
+            res.set_content(response.dump(), "application/json");
         }
     });
 
